@@ -27,7 +27,7 @@ class ClusterNode(Node):
         self.eps = 0.1
         self.min_samples = 15
         self.z_min = 0.33
-        self.min_dist_xy = 0.3 
+        self.min_dist_xy = 0.17
 
     def lidar_callback(self, msg):
         gen = point_cloud2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True)
