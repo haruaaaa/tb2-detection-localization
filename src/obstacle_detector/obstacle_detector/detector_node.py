@@ -23,6 +23,7 @@ class RobotDetector(Node):
         self.declare_parameter('gate', core.GATE)
         self.declare_parameter('min_hits', core.MIN_HITS)
         self.declare_parameter('max_miss', core.MAX_MISS)
+        self.declare_parameter('span_min', core.SPAN_MIN)
 
         self.robot_min = self.get_parameter('robot_min_size').value
         self.robot_max = self.get_parameter('robot_max_size').value
@@ -33,7 +34,8 @@ class RobotDetector(Node):
         gate = self.get_parameter('gate').value
         min_hits = self.get_parameter('min_hits').value
         max_miss = self.get_parameter('max_miss').value
-        self.tracker = core.Tracker(gate, min_hits, max_miss)
+        span_min = self.get_parameter('span_min').value
+        self.tracker = core.Tracker(gate, min_hits, max_miss, span_min)
 
         self.sub = self.create_subscription(PointCloud2, topic, self.on_cloud, 10)
         self.pub_robot = self.create_publisher(PoseStamped, '/detection/robot', 10)
@@ -100,9 +102,11 @@ class RobotDetector(Node):
             arr.markers.append(m)
             mid += 1
 
-        for t in confirmed:
+        for i, t in enumerate(confirmed):
+            is_best = (i == 0)
+            color = (0.1, 1.0, 0.2, 1.0) if is_best else (0.5, 0.7, 0.5, 0.6)
             m = self.make_marker(frame, stamp, mid, t['pos'], max(t['size'], 0.25),
-                                 (0.1, 0.9, 0.2, 0.9), Marker.SPHERE)
+                                 color, Marker.SPHERE)
             arr.markers.append(m)
             mid += 1
 
@@ -119,7 +123,8 @@ class RobotDetector(Node):
             lbl.pose.orientation.w = 1.0
             lbl.scale.z = 0.2
             lbl.color.r, lbl.color.g, lbl.color.b, lbl.color.a = 1.0, 1.0, 1.0, 1.0
-            lbl.text = f"robot #{t['id']}"
+            span = t.get('span', 0)
+            lbl.text = f"#{t['id']} span={span:.2f}m sz={t['size']:.2f}m"
             arr.markers.append(lbl)
             mid += 1
 

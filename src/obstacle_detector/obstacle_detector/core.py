@@ -2,13 +2,15 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 
 
-ROBOT_MIN_SIZE = 0.12
-ROBOT_MAX_SIZE = 0.55
+ROBOT_MIN_SIZE = 0.20
+ROBOT_MAX_SIZE = 0.45
 SEG_LEN_MIN = 0.60
-ELONG_MAX = 2.5
+ELONG_MAX = 1.8
 GATE = 0.40
 MIN_HITS = 5
 MAX_MISS = 6
+SPAN_MIN = 0.05
+SPAN_MOVING = 0.30
 
 
 def cluster_points(points, eps=0.1, min_samples=15, z_min=-0.10, z_max=0.20):
@@ -55,19 +57,23 @@ def classify_clusters(points, labels, robot_min=ROBOT_MIN_SIZE, robot_max=ROBOT_
 
         if l_major > seg_len:
             walls.append({'pos': centroid, 'size': l_major})
-        elif robot_min <= l_major <= robot_max and elong <= elong_max:
+        elif (robot_min <= l_major <= robot_max and
+              robot_min <= l_minor <= robot_max and
+              elong <= elong_max):
             candidates.append({'pos': centroid, 'size': l_major})
 
     return walls, candidates
 
 
 class Tracker:
-    def __init__(self, gate=GATE, min_hits=MIN_HITS, max_miss=MAX_MISS):
+    def __init__(self, gate=GATE, min_hits=MIN_HITS, max_miss=MAX_MISS, span_min=SPAN_MIN):
         self.gate = gate
         self.min_hits = min_hits
         self.max_miss = max_miss
+        self.span_min = span_min
         self.tracks = []
         self._next_id = 0
+        self._best_id = None
 
     def update(self, candidates):
         used = set()
@@ -105,13 +111,45 @@ class Tracker:
 
         self.tracks = [t for t in self.tracks if t['miss'] <= self.max_miss]
 
-        confirmed = [t for t in self.tracks if t['hits'] >= self.min_hits]
-        confirmed.sort(key=lambda t: -t['hits'])
-        return confirmed
+        candidates = []
+        for t in self.tracks:
+            if t['hits'] >= self.min_hits:
+                t['span'] = compute_span(t['history'])
+                candidates.append(t)
+
+        if not candidates:
+            self._best_id = None
+            return []
+
+        moving = [t for t in candidates if t['span'] >= SPAN_MOVING]
+
+        if moving:
+            current_best = next((t for t in moving if t['id'] == self._best_id), None)
+            top = max(moving, key=lambda t: t['span'])
+
+            if current_best is None:
+                self._best_id = top['id']
+            elif top['span'] > current_best['span'] * 1.5:
+                self._best_id = top['id']
+
+            moving.sort(key=lambda t: (t['id'] != self._best_id, -t['span']))
+            return moving
+        else:
+            current_best = next((t for t in candidates if t['id'] == self._best_id), None)
+            top = max(candidates, key=lambda t: t['hits'])
+
+            if current_best is None:
+                self._best_id = top['id']
+            elif top['hits'] > current_best['hits'] * 1.5:
+                self._best_id = top['id']
+
+            candidates.sort(key=lambda t: (t['id'] != self._best_id, -t['hits']))
+            return candidates[:1]
 
     def reset(self):
         self.tracks = []
         self._next_id = 0
+        self._best_id = None
 
 
 def compute_span(history):
