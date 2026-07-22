@@ -2,15 +2,15 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 
 
-ROBOT_MIN_SIZE = 0.20
-ROBOT_MAX_SIZE = 0.45
+ROBOT_MIN_SIZE = 0.1
+ROBOT_MAX_SIZE = 0.5
 SEG_LEN_MIN = 0.60
-ELONG_MAX = 1.8
+ELONG_MAX = 1.5
 GATE = 0.40
-MIN_HITS = 5
+MIN_HITS = 1
 MAX_MISS = 6
-SPAN_MIN = 0.05
-SPAN_MOVING = 0.30
+SPAN_MIN = 0.02
+SPAN_MOVING = 0.05
 
 
 def cluster_points(points, eps=0.1, min_samples=15, z_min=-0.10, z_max=0.20):
@@ -115,7 +115,8 @@ class Tracker:
         for t in self.tracks:
             if t['hits'] >= self.min_hits:
                 t['span'] = compute_span(t['history'])
-                candidates.append(t)
+                if t['span'] >= self.span_min:
+                    candidates.append(t)
 
         if not candidates:
             self._best_id = None
