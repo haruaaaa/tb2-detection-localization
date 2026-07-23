@@ -1,0 +1,8 @@
+build
+install
+log
+__pycache__/
+*.pyc
+# бэги монтируются томом (см. docker-compose), в образ их не тащим
+src/bags/
+HSL26-ros2_bags
