@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'cluster_node = clustering.cluster_node:main'
+            'cluster_node = clustering.cluster_node:main',
+            '2d_cluster_node = clustering.range_cluster_node:main'
         ],
     },
 )

@@ -4,3 +4,5 @@ log
 __pycache__/
 *.pyc
 HSL26-ros2_bags
+src/bags/
+src/clustering/range_image_debug.jpg
