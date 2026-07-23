@@ -96,6 +96,22 @@ source install/setup.bash
 ros2 launch obstacle_detector detect_from_bag.launch.py
 ros2 launch obstacle_detector detect_from_bag.launch.py bag:=/path/to/bag rviz:=true
 ```
+In tmux:
+
+```
+rviz2
+```
+```
+ros2 run clustering cluster_node 
+```
+```
+ros2 run obstacle_detector detector_node
+```
+```
+cd src/bags
+ros2 bag play /path/to/your/bag
+```
+
 
 Run detector alone:
 ```bash
