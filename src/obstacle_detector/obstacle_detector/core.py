@@ -2,15 +2,15 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 
 
-ROBOT_MIN_SIZE = 0.1
-ROBOT_MAX_SIZE = 0.5
+ROBOT_MIN_SIZE = 0.24
+ROBOT_MAX_SIZE = 0.44
 SEG_LEN_MIN = 0.60
 ELONG_MAX = 1.5
 GATE = 0.40
 MIN_HITS = 1
 MAX_MISS = 6
-SPAN_MIN = 0.02
-SPAN_MOVING = 0.05
+SPAN_MIN = 0.027
+SPAN_MOVING = 0.1
 
 
 def cluster_points(points, eps=0.1, min_samples=15, z_min=-0.10, z_max=0.20):

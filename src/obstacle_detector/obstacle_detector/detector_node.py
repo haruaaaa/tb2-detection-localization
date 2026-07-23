@@ -104,6 +104,10 @@ class RobotDetector(Node):
 
         for i, t in enumerate(confirmed):
             is_best = (i == 0)
+            
+            if not is_best:
+                continue
+
             color = (0.1, 1.0, 0.2, 1.0) if is_best else (0.5, 0.7, 0.5, 0.6)
             m = self.make_marker(frame, stamp, mid, t['pos'], max(t['size'], 0.25),
                                  color, Marker.SPHERE)

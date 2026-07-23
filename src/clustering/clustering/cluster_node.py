@@ -23,9 +23,9 @@ class ClusterNode(Node):
             '/livox/lidar/clust',
             10
         )
-
-        self.eps = 0.2
-        self.min_samples = 37
+        
+        self.eps = 0.18
+        self.min_samples = 45
         self.z_min = 0.325
         self.min_dist_xy = 0.35
 
@@ -45,11 +45,30 @@ class ClusterNode(Node):
         if points.shape[0] == 0:
             return
         
-        clustering = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(points)
+       
+        MAX_DIST = 3.0 # Дистанция (в метрах), на которой eps вырастет максимально
+        MAX_EPS_INCREASE = 0.22 # На сколько вырастет eps (0.10 = +10%)
+
+        r = np.linalg.norm(points[:, :2], axis=1)
+        
+        # Считаем коэффициент сжатия. 
+        # В центре (r=0) он равен 1.0. На MAX_DIST он будет ~0.9 (то есть точки сожмутся).
+        # Формула: 1 / (1 + процент_увеличения * (текущая_дистанция / макс_дистанция))
+        scale = 1.0 / (1.0 + MAX_EPS_INCREASE * np.clip(r / MAX_DIST, 0.0, 1.0))
+
+        # Создаем "фейковые" точки для кластеризации
+        fake_points = points.copy()
+        fake_points[:, 0] *= scale
+        fake_points[:, 1] *= scale
+        fake_points[:, 2] *= scale
+
+        clustering = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(fake_points)
         labels = clustering.labels_
+        # ====================================================================
 
         mask = labels != -1
-        clustered_points = points[mask]
+        
+        clustered_points = points[mask] 
         clustered_labels = labels[mask]
         
         if len(clustered_points) == 0:
@@ -73,7 +92,6 @@ class ClusterNode(Node):
         
         num_clusters = len(set(clustered_labels))
         
-
 def main(args=None):
     rclpy.init(args=args)
     node = ClusterNode()
