@@ -34,7 +34,7 @@ Visualization Manager:
       Topic: /livox/lidar/clust
       Queue Size: 10
       Style: Points
-      Size (m): 0.01
+      Size (m): 0.005
       Color Transformer: Intencity
 
     - Class: rviz_default_plugins/MarkerArray
@@ -70,11 +70,11 @@ Visualization Manager:
     Current:
       Class: rviz_default_plugins/Orbit
       Name: Orbit (default)
-      Distance: 1.5
+      Distance: 10
       Focal Point:
         X: 1
         Y: 0
-        Z: 8
+        Z: 0
       Roll: 0.0
       Pitch: 1.55
       Yaw: 0.0
