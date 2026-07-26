@@ -11,11 +11,18 @@ from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch.conditions import IfCondition
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
+
+import os
 
 
 def generate_launch_description():
     # бэг лежит локально в src/bags (см. README); в контейнере это /root/ws/src/bags
     default_bag = '/root/ws/src/bags/rosbag2_2026_06_27-18_43-mov_01'
+    pkg_share = FindPackageShare('obstacle_detector').find('obstacle_detector')
+    config_path = os.path.join(pkg_share, 'config', 'config.rviz')
+    if not os.path.exists(config_path):
+        config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.rviz')
 
     bag = LaunchConfiguration('bag')
     loop = LaunchConfiguration('loop')
@@ -46,6 +53,10 @@ def generate_launch_description():
         Node(package='obstacle_detector', executable='detector_node',
              name='robot_detector', output='screen'),
 
-        Node(package='rviz2', executable='rviz2', name='rviz2',
-             output='screen', condition=IfCondition(use_rviz)),
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            output='screen',
+            arguments=['-d', config_path],
+            name='rviz2', condition=IfCondition(use_rviz)),
     ])

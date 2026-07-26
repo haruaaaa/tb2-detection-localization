@@ -1,0 +1,90 @@
+Panels:
+  - Class: rviz_common/Displays
+    Help Height: 78
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options
+        - /Status
+      Splitter Ratio: 0.5
+
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 20
+      Color: 160;160;160
+      Line Style:
+        Value: Lines
+      Alpha: 0.5
+      Reference Frame: base_link
+
+    - Class: rviz_default_plugins/Pose
+      Name: Goal Pose
+      Enabled: true
+      Topic: /goal_pose
+      Color: 255; 0; 0
+
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Livox Clusters
+      Enabled: true
+      Topic: /livox/lidar/clust
+      Queue Size: 10
+      Style: Points
+      Size (m): 0.01
+      Color Transformer: Intencity
+
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Obstacle Detector Markers
+      Enabled: true
+      Topic: /detection/markers
+      Queue Size: 10
+
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Axes: true
+      Show Names: true
+      Marker Scale: 0.2
+
+  Enabled: true
+  Global Options:
+    Background Color: 48;48;48
+    Fixed Frame: base_link
+
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Name: Interact
+    - Class: rviz_default_plugins/MoveCamera
+      Name: Move Camera
+    - Class: rviz_default_plugins/Select
+      Name: Select
+    - Class: rviz_default_plugins/Measure
+      Name: Measure
+
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Orbit (default)
+      Distance: 1.5
+      Focal Point:
+        X: 1
+        Y: 0
+        Z: 8
+      Roll: 0.0
+      Pitch: 1.55
+      Yaw: 0.0
+
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 900
+  Width: 1600
+  X: 100
+  Y: 100
+  Hide Left Dock: true     # скрываем левую панель (Selection)
+  Hide Right Dock: true    # скрываем правые панели (Views и Tool Properties)
