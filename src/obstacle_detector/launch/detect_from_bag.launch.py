@@ -43,19 +43,28 @@ def generate_launch_description():
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
-            arguments=['0', '0', '0', '0', '0', '0', 'map', 'base_link'],
+            arguments=['0', '0', '0.2', '0', '0', '0', 'base_link', 'livox'],
             parameters=[{'use_sim_time': True}]
         ),
 
-
-        Node(package='clustering', executable='cluster_node',
-             name='point_cloud_cluster', output='screen'),
+        Node(
+            package='clustering', 
+            executable='cluster_node',
+            name='point_cloud_cluster', 
+            output='screen',
+            parameters=[{'use_sim_time': True}]
+        ),
 
         Node(
             package='obstacle_detector',
             executable='detector_node',
-            parameters=[{'use_sim_time': True, 'target_frame': 'map'}]),
-
+            output='screen',
+            parameters=[{
+                'use_sim_time': True, 
+                'target_frame': 'base_link',
+                'detected_robot_frame': 'turtlebot'
+            }]
+        ),
 
         Node(package='rviz2', executable='rviz2', name='rviz2',
              output='screen', condition=IfCondition(use_rviz)),
