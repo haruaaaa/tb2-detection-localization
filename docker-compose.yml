@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  hac:
+    build: .
+    container_name: hac
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - GAZEBO_GUI_CLIENT=1
+      - LIBGL_ALWAYS_SOFTWARE=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - ROS_DOMAIN_ID=59
+    volumes:
+      - .:/root/ws
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev:/dev:rw
+    device_cgroup_rules:
+      - 'c *:* rmw'
+    network_mode: "host"
+    ipc: host
+    privileged: true
+    stdin_open: true
+    tty: true
+    command: /bin/bash
