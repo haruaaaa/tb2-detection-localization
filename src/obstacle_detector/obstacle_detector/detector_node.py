@@ -4,17 +4,21 @@ import numpy as np
 
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
-from geometry_msgs.msg import PoseStamped, PoseArray, Pose
+from geometry_msgs.msg import PoseStamped, PoseArray, Pose, TransformStamped
 from visualization_msgs.msg import Marker, MarkerArray
 
-from . import core
+import tf2_ros
+import tf2_geometry_msgs
 
+from . import core
 
 class RobotDetector(Node):
 
     def __init__(self):
         super().__init__('robot_detector')
 
+        self.declare_parameter('target_frame', 'livox')
+        self.declare_parameter('detected_robot_frame', 'turtlebot')
         self.declare_parameter('input_topic', '/livox/lidar/clust')
         self.declare_parameter('robot_min_size', core.ROBOT_MIN_SIZE)
         self.declare_parameter('robot_max_size', core.ROBOT_MAX_SIZE)
@@ -25,6 +29,8 @@ class RobotDetector(Node):
         self.declare_parameter('max_miss', core.MAX_MISS)
         self.declare_parameter('span_min', core.SPAN_MIN)
 
+        self.target_frame = self.get_parameter('target_frame').value
+        self.detected_robot_frame = self.get_parameter('detected_robot_frame').value
         self.robot_min = self.get_parameter('robot_min_size').value
         self.robot_max = self.get_parameter('robot_max_size').value
         self.seg_len_min = self.get_parameter('seg_len_min').value
@@ -37,12 +43,46 @@ class RobotDetector(Node):
         span_min = self.get_parameter('span_min').value
         self.tracker = core.Tracker(gate, min_hits, max_miss, span_min)
 
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+        
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+
         self.sub = self.create_subscription(PointCloud2, topic, self.on_cloud, 10)
         self.pub_robot = self.create_publisher(PoseStamped, '/detection/robot', 10)
         self.pub_robots = self.create_publisher(PoseArray, '/detection/robots', 10)
         self.pub_markers = self.create_publisher(MarkerArray, '/detection/markers', 10)
 
-        self.get_logger().info(f"listening {topic}, robot size {self.robot_min:.2f}..{self.robot_max:.2f}m")
+        self.get_logger().info(
+            f"listening {topic}, target_frame: {self.target_frame}, "
+            f"detected_frame: {self.detected_robot_frame}, "
+            f"robot size {self.robot_min:.2f}..{self.robot_max:.2f}m"
+        )
+
+    def transform_point(self, pos_2d, src_frame, stamp):
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                self.target_frame,
+                src_frame,
+                stamp,
+                timeout=rclpy.duration.Duration(seconds=0.05)
+            )
+            
+            ps_msg = Pose()
+            ps_msg.position.x = float(pos_2d[0])
+            ps_msg.position.y = float(pos_2d[1])
+            ps_msg.position.z = 0.0
+            ps_msg.orientation.w = 1.0
+            
+            tf_pose = tf2_geometry_msgs.do_transform_pose(ps_msg, transform)
+            return np.array([tf_pose.position.x, tf_pose.position.y])
+            
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            self.get_logger().warn(
+                f"TF transform error ({src_frame} -> {self.target_frame}): {e}",
+                throttle_duration_sec=2.0
+            )
+            return None
 
     def on_cloud(self, msg):
         gen = point_cloud2.read_points(msg, field_names=("x", "y", "intensity"), skip_nans=True)
@@ -53,45 +93,81 @@ class RobotDetector(Node):
         xy = pts[:, :2]
         ids = pts[:, 2]
 
-        walls, candidates = core.classify_clusters(
+        walls_local, candidates_local = core.classify_clusters(
             np.column_stack([xy, np.zeros(len(xy))]), ids,
             self.robot_min, self.robot_max, self.seg_len_min, self.elong_max
         )
 
-        confirmed = self.tracker.update(candidates)
-        self.publish(confirmed, walls, msg.header.frame_id, msg.header.stamp)
+        src_frame = msg.header.frame_id
+        stamp = msg.header.stamp
+
+        candidates_global = []
+        for c in candidates_local:
+            pos_gtf = self.transform_point(c['pos'], src_frame, stamp)
+            if pos_gtf is not None:
+                candidates_global.append({'pos': pos_gtf, 'size': c['size']})
+
+        walls_global = []
+        for w in walls_local:
+            pos_gtf = self.transform_point(w['pos'], src_frame, stamp)
+            if pos_gtf is not None:
+                walls_global.append({'pos': pos_gtf, 'size': w['size']})
+
+        confirmed = self.tracker.update(candidates_global)
+
+        self.publish(confirmed, walls_global, self.target_frame, stamp)
+
+    def publish_robot_tf(self, confirmed_robot, frame, stamp):
+            t = TransformStamped()
+            t.header.stamp = stamp
+            t.header.frame_id = frame
+
+            t.child_frame_id = self.detected_robot_frame
+
+            t.transform.translation.x = float(confirmed_robot['pos'][0])
+            t.transform.translation.y = float(confirmed_robot['pos'][1])
+            t.transform.translation.z = 0.0
+
+            t.transform.rotation.w = 1.0
+
+            self.tf_broadcaster.sendTransform(t)
 
     def publish(self, confirmed, walls, frame, stamp):
-        if confirmed:
-            ps = PoseStamped()
-            ps.header.frame_id = frame
-            ps.header.stamp = stamp
-            ps.pose.position.x = float(confirmed[0]['pos'][0])
-            ps.pose.position.y = float(confirmed[0]['pos'][1])
-            ps.pose.orientation.w = 1.0
-            self.pub_robot.publish(ps)
+            if confirmed:
+                best_robot = confirmed[0]
 
-        pa = PoseArray()
-        pa.header.frame_id = frame
-        pa.header.stamp = stamp
-        for t in confirmed:
-            p = Pose()
-            p.position.x = float(t['pos'][0])
-            p.position.y = float(t['pos'][1])
-            p.orientation.w = 1.0
-            pa.poses.append(p)
-        self.pub_robots.publish(pa)
+                ps = PoseStamped()
+                ps.header.frame_id = frame
+                ps.header.stamp = stamp
+                ps.pose.position.x = float(best_robot['pos'][0])
+                ps.pose.position.y = float(best_robot['pos'][1])
+                ps.pose.orientation.w = 1.0
+                self.pub_robot.publish(ps)
 
-        self.publish_markers(confirmed, walls, frame, stamp)
+                self.publish_robot_tf(best_robot, frame, stamp)
 
-        if confirmed:
-            self.get_logger().info(f"robots: {len(confirmed)}, walls: {len(walls)}")
+            pa = PoseArray()
+            pa.header.frame_id = frame
+            pa.header.stamp = stamp
+            for t in confirmed:
+                p = Pose()
+                p.position.x = float(t['pos'][0])
+                p.position.y = float(t['pos'][1])
+                p.orientation.w = 1.0
+                pa.poses.append(p)
+            self.pub_robots.publish(pa)
+
+            self.publish_markers(confirmed, walls, frame, stamp)
+
+            if confirmed:
+                self.get_logger().info(f"robots: {len(confirmed)}, walls: {len(walls)}") 
 
     def publish_markers(self, confirmed, walls, frame, stamp):
         arr = MarkerArray()
 
         clr = Marker()
         clr.header.frame_id = frame
+        clr.header.stamp = stamp
         clr.action = Marker.DELETEALL
         arr.markers.append(clr)
 
@@ -104,7 +180,7 @@ class RobotDetector(Node):
 
         for i, t in enumerate(confirmed):
             is_best = (i == 0)
-            
+
             if not is_best:
                 continue
 
@@ -142,14 +218,23 @@ class RobotDetector(Node):
         m.id = mid
         m.type = shape
         m.action = Marker.ADD
-        m.pose.position.x = float(pos[0])
-        m.pose.position.y = float(pos[1])
+
+        if hasattr(pos, 'pose'):
+            m.pose.position.x = float(pos.pose.position.x)
+            m.pose.position.y = float(pos.pose.position.y)
+        elif hasattr(pos, 'position'):
+            m.pose.position.x = float(pos.position.x)
+            m.pose.position.y = float(pos.position.y)
+        else:
+            m.pose.position.x = float(pos[0])
+            m.pose.position.y = float(pos[1])
+
+        m.pose.position.z = 0.15
         m.pose.orientation.w = 1.0
         m.scale.x = m.scale.y = float(size)
         m.scale.z = 0.3
         m.color.r, m.color.g, m.color.b, m.color.a = rgba
         return m
-
 
 def main(args=None):
     rclpy.init(args=args)
@@ -160,8 +245,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
-
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

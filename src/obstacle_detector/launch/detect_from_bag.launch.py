@@ -28,7 +28,7 @@ def generate_launch_description():
     loop = LaunchConfiguration('loop')
     rate = LaunchConfiguration('rate')
     use_rviz = LaunchConfiguration('rviz')
-
+    
     return LaunchDescription([
         DeclareLaunchArgument('bag', default_value=default_bag,
                               description='путь к rosbag2 (папка с .mcap)'),
@@ -47,11 +47,31 @@ def generate_launch_description():
             output='screen',
         ),
 
-        Node(package='clustering', executable='cluster_node',
-             name='point_cloud_cluster', output='screen'),
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            arguments=['0', '0', '0.2', '0', '0', '0', 'base_link', 'livox'],
+            parameters=[{'use_sim_time': True}]
+        ),
 
-        Node(package='obstacle_detector', executable='detector_node',
-             name='robot_detector', output='screen'),
+        Node(
+            package='clustering', 
+            executable='cluster_node',
+            name='point_cloud_cluster', 
+            output='screen',
+            parameters=[{'use_sim_time': True}]
+        ),
+
+        Node(
+            package='obstacle_detector',
+            executable='detector_node',
+            output='screen',
+            parameters=[{
+                'use_sim_time': True, 
+                'target_frame': 'base_link',
+                'detected_robot_frame': 'turtlebot'
+            }]
+        ),
 
         Node(
             package='rviz2',
