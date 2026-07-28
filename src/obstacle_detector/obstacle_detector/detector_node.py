@@ -65,7 +65,7 @@ class RobotDetector(Node):
                 self.target_frame,
                 src_frame,
                 stamp,
-                timeout=rclpy.duration.Duration(seconds=0.05)
+                timeout=rclpy.duration.Duration(seconds=0.0)
             )
             
             ps_msg = Pose()

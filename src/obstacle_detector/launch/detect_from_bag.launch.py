@@ -32,7 +32,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('bag', default_value=default_bag,
                               description='путь к rosbag2 (папка с .mcap)'),
-        DeclareLaunchArgument('loop', default_value='true',
+        DeclareLaunchArgument('loop', default_value='false',
                               description='проигрывать бэг по кругу'),
         DeclareLaunchArgument('rate', default_value='1.0',
                               description='скорость проигрывания'),

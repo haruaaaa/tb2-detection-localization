@@ -28,6 +28,7 @@ class ClusterNode(Node):
         self.min_samples = 45
         self.z_min = 0.325
         self.min_dist_xy = 0.35
+        self.max_dist_xy = 3.8
 
     def lidar_callback(self, msg):
         gen = point_cloud2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True)
@@ -39,8 +40,9 @@ class ClusterNode(Node):
         z_mask = points[:, 2] <= self.z_min
 
         dist_xy = np.linalg.norm(points[:, :2], axis=1)
-        dist_mask = dist_xy >= self.min_dist_xy
+        dist_mask = (dist_xy >= self.min_dist_xy) & (dist_xy <= self.max_dist_xy) 
         points = points[z_mask & dist_mask]
+
 
         if points.shape[0] == 0:
             return
