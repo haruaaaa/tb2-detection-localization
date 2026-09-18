@@ -41,8 +41,30 @@ def principal_extent(xy):
     return float(spans.max()), float(spans.min())
 
 
+def fit_circle_kasa(xy):
+    """Algebraic circle fitting (Kasa method). Returns (xc, yc, r, rms)."""
+    if len(xy) < 5:
+        return None, None, None, 999.0
+    x, y = xy[:, 0], xy[:, 1]
+    A = np.column_stack((2 * x, 2 * y, np.ones_like(x)))
+    b = x**2 + y**2
+    try:
+        sol, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
+        xc, yc, c = sol
+        r_sq = c + xc**2 + yc**2
+        if r_sq <= 0:
+            return None, None, None, 999.0
+        r = np.sqrt(r_sq)
+        dists = np.sqrt((x - xc)**2 + (y - yc)**2)
+        rms = np.sqrt(np.mean((dists - r)**2))
+        return float(xc), float(yc), float(r), float(rms)
+    except Exception:
+        return None, None, None, 999.0
+
+
 def classify_clusters(points, labels, robot_min=ROBOT_MIN_SIZE, robot_max=ROBOT_MAX_SIZE,
-                      seg_len=SEG_LEN_MIN, elong_max=ELONG_MAX):
+                      seg_len=SEG_LEN_MIN, elong_max=ELONG_MAX,
+                      circle_r_min=0.14, circle_r_max=0.23, max_circle_rms=0.035, use_circle_fit=True):
     walls = []
     candidates = []
 
@@ -60,7 +82,23 @@ def classify_clusters(points, labels, robot_min=ROBOT_MIN_SIZE, robot_max=ROBOT_
         elif (robot_min <= l_major <= robot_max and
               robot_min <= l_minor <= robot_max and
               elong <= elong_max):
-            candidates.append({'pos': centroid, 'size': l_major})
+            
+            cand_pos = centroid
+            cand_size = l_major
+            is_robot = True
+
+            if use_circle_fit and len(xy) >= 5:
+                xc, yc, r, rms = fit_circle_kasa(xy)
+                if r is not None and circle_r_min <= r <= circle_r_max and rms <= max_circle_rms:
+                    # Kasa circle center is more accurate for cylindrical TB2 chassis
+                    cand_pos = np.array([xc, yc])
+                    cand_size = r * 2.0
+                elif rms > max_circle_rms * 1.8:
+                    # Poor circle fit on dense clusters indicates irregular clutter
+                    is_robot = False
+
+            if is_robot:
+                candidates.append({'pos': cand_pos, 'size': cand_size})
 
     return walls, candidates
 

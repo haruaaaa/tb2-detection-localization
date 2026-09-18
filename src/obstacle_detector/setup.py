@@ -28,7 +28,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'detector_node = obstacle_detector.detector_node:main'
+            'detector_node = obstacle_detector.detector_node:main',
+            'tb2_lidar_detector = obstacle_detector.detector_node:main',
         ],
     },
 )

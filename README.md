@@ -1,76 +1,43 @@
 # tb2-detection-localization
 
-Detection and localization Turtlebot 2 based on Livox lidar point cloud.
+Единый сабмодуль детекции и локализации мобильного робота TurtleBot 2 по данным лидара Livox для Хакатона StarLine 2026.
 
-## Принцип работы
+## Принцип работы и возможности
 
-- Лидар видит окружающую среду и объекты вокруг.
-- Узел кластеризации разбивает облако точек на отдельные группы.
-- Затем узел детектора оценивает каждую группу по форме и размеру.
+Сабмодуль объединяет в себе полный конвейер детекции:
+1. **Кластеризация точек (пакет `clustering`)**:
+   - Адаптивный DBSCAN по 3D облаку точек лидара Livox (`/livox/lidar`).
+   - Фильтрация по высоте и дистанции.
+   - Публикация кластеризованного облака в `/livox/lidar/clust`.
 
+2. **Единый универсальный детектор (пакет `obstacle_detector`)**:
+   - **Универсальные входные данные**: поддерживает как 2D LaserScan (`/scan`), так и 3D PointCloud2 (`/livox/lidar/clust` или `/livox/lidar`).
+   - **Фильтрация стен по карте SLAM (`/map`)**: при наличии карты автоматически отсекает точки известных стен лабиринта, выделяя только динамические объекты в свободном пространстве.
+   - **Геометрическая классификация**:
+     - Метод главных компонент (PCA) для отсечения протяженных сегментов стен.
+     - Алгебраическая подгонка окружности методом Каса (Kasa circle fitting) под цилиндрический корпус TurtleBot 2 ($R \approx 0.177\text{ м}$).
+   - **Продвинутый трекинг**:
+     - Отслеживание траектории и различение движущихся и статичных объектов (`SPAN_MOVING`).
+     - Публикация цели в `/detection/opponent_robot` (для автономного контроллера миссии), `/detection/robot`, `/detection/robots` и маркеров в `/detection/markers`.
+     - Вещание TF-фрейма `opponent_robot`.
 
-### 1. Соберите контейнер
+---
 
+## Сборка и запуск
+
+### Сборка пакетов
 ```bash
-docker compose build hac
-```
-
-### 2. Разовое разрешение на использование GUI на устройстве 
-Для демонcтрации решения в RVIZ
-
-```
-xhost +local:docker
-```
-
-### 3. Проверьте наличие rosbag
-
-Rosbag'и должны лежать в папке:
-
-```bash
-/root/ws/src/bags
-```
-
-Если нужного файла нет, сначала положите его в эту папку.
-
-## Запуск решения
-1. Запуск docker-контейнера 
-```bash
-docker compose run --rm hac 
-```
-2. Построение пакета
-```bash
-colcon build
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install --packages-select clustering obstacle_detector
 source install/setup.bash
 ```
 
-### Базовый запуск
-3. Запускаем launch, содержащий все необходимые ноды
+### Запуск детектора в составе системы
 ```bash
-ros2 launch obstacle_detector detect_from_bag.launch.py
+ros2 run obstacle_detector detector_node --ros-args -p use_scan:=true -p map_topic:=/map -p target_topic:=/detection/opponent_robot
 ```
 
-Этот вариант использует дефолтный rosbag, который задан внутри launch-файла.
-
-### Дополнительные аргументы
-
-Launch-файл поддерживает аргументы:
-
-- bag — путь к rosbag-папке;
-- loop — повторять воспроизведение по кругу (`true`/`false`);
-- rate — скорость воспроизведения;
-- rviz — запускать ли RViz (`true`/`false`).
-
-Пример:
-
+### Квалификационный запуск из rosbag
 ```bash
-ros2 launch obstacle_detector detect_from_bag.launch.py bag:=/root/ws/src/bags/rosbag2_2026_06_27-18_43-mov_01 loop:=false rate:=1.0 rviz:=true
+ros2 launch obstacle_detector detect_from_bag.launch.py bag:=/path/to/rosbag loop:=true rviz:=true
 ```
-
-
-## Что происходит после запуска
-
-После запуска launch-файла:
-
-- начинает воспроизводиться rosbag;
-- запускаются узлы кластеризации и детекции;
-- публикуются результаты в topic `/detection/robot`, `/detection/robots` и `/detection/markers`.
