@@ -41,6 +41,8 @@ class RobotDetector(Node):
         self.declare_parameter('circle_r_min', 0.14)
         self.declare_parameter('circle_r_max', 0.23)
         self.declare_parameter('max_circle_rms', 0.035)
+        self.declare_parameter('z_min', -0.15)
+        self.declare_parameter('z_max', 0.325)
 
         self.target_frame = self.get_parameter('target_frame').value
         self.detected_robot_frame = self.get_parameter('detected_robot_frame').value
@@ -50,6 +52,9 @@ class RobotDetector(Node):
         self.map_topic = self.get_parameter('map_topic').value
         self.target_topic = self.get_parameter('target_topic').value
         self.use_scan = self.get_parameter('use_scan').value
+
+        self.z_min = float(self.get_parameter('z_min').value)
+        self.z_max = float(self.get_parameter('z_max').value)
 
         self.robot_min = self.get_parameter('robot_min_size').value
         self.robot_max = self.get_parameter('robot_max_size').value
@@ -121,6 +126,21 @@ class RobotDetector(Node):
 
         return pts_map[free_mask]
 
+    def is_pos_inside_wall(self, pos_global):
+        if self.map_data is None or self.map_info is None:
+            return False
+        res = self.map_info.resolution
+        ox = self.map_info.origin.position.x
+        oy = self.map_info.origin.position.y
+        h, w = self.map_data.shape
+        gx = int((pos_global[0] - ox) / res)
+        gy = int((pos_global[1] - oy) / res)
+        if 1 <= gx < w - 1 and 1 <= gy < h - 1:
+            neighborhood = self.map_data[gy - 1:gy + 2, gx - 1:gx + 2]
+            if np.any(neighborhood > 60):
+                return True
+        return False
+
     def on_scan(self, msg: LaserScan):
         angles = np.linspace(msg.angle_min, msg.angle_max, len(msg.ranges))
         ranges = np.array(msg.ranges)
@@ -137,23 +157,11 @@ class RobotDetector(Node):
         self.process_points(pts_local, msg.header.frame_id, msg.header.stamp)
 
     def on_cloud(self, msg: PointCloud2):
-        has_intensity = any(f.name == "intensity" for f in msg.fields)
-        if has_intensity:
-            gen = point_cloud2.read_points(msg, field_names=("x", "y", "intensity"), skip_nans=True)
-            pts = np.array([[p[0], p[1], p[2]] for p in gen], dtype=np.float32)
-            if pts.shape[0] == 0:
-                return
-            # Pre-clustered cloud from cluster_node
-            xy = pts[:, :2]
-            ids = pts[:, 2]
-            self.process_clustered_xy(xy, ids, msg.header.frame_id, msg.header.stamp)
-            return
-
         gen = point_cloud2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True)
         pts = np.array([[p[0], p[1], p[2]] for p in gen], dtype=np.float32)
         if pts.shape[0] == 0:
             return
-        z_mask = (pts[:, 2] >= -0.10) & (pts[:, 2] <= 0.30)
+        z_mask = (pts[:, 2] >= self.z_min) & (pts[:, 2] <= self.z_max)
         pts_filtered = pts[z_mask]
         self.process_points(pts_filtered, msg.header.frame_id, msg.header.stamp)
 
@@ -213,7 +221,7 @@ class RobotDetector(Node):
             candidates_global = []
             for c in candidates:
                 pos_g = self.transform_point(c['pos'], src_frame, stamp)
-                if pos_g is not None:
+                if pos_g is not None and not self.is_pos_inside_wall(pos_g):
                     candidates_global.append({'pos': pos_g, 'size': c['size']})
 
             walls_global = []
@@ -222,7 +230,7 @@ class RobotDetector(Node):
                 if pos_g is not None:
                     walls_global.append({'pos': pos_g, 'size': w['size']})
         else:
-            candidates_global = candidates
+            candidates_global = [c for c in candidates if not self.is_pos_inside_wall(c['pos'])]
             walls_global = walls
 
         # 5. Tracker update
@@ -242,6 +250,8 @@ class RobotDetector(Node):
         for c in candidates_local:
             pos_gtf = self.transform_point(c['pos'], src_frame, stamp)
             if pos_gtf is not None:
+                if self.is_pos_inside_wall(pos_gtf):
+                    continue
                 candidates_global.append({'pos': pos_gtf, 'size': c['size']})
 
         walls_global = []

@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'cluster_node = clustering.cluster_node:main'
+            'cluster_node = clustering.cluster_node:main',
+            'point_cloud_cluster = clustering.cluster_node:main',
         ],
     },
 )

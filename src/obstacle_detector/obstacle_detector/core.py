@@ -13,7 +13,7 @@ SPAN_MIN = 0.027
 SPAN_MOVING = 0.1
 
 
-def cluster_points(points, eps=0.1, min_samples=15, z_min=-0.10, z_max=0.20):
+def cluster_points(points, eps=0.1, min_samples=15, z_min=-0.15, z_max=0.325):
     if len(points) == 0:
         return np.array([]), np.array([])
 

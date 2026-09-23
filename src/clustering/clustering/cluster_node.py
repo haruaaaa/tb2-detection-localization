@@ -10,25 +10,37 @@ from sensor_msgs_py import point_cloud2
 class ClusterNode(Node):
     def __init__(self):
         super().__init__('point_cloud_cluster')
+
+        self.declare_parameter('input_topic', '/livox/lidar')
+        self.declare_parameter('output_topic', '/livox/lidar/clust')
+        self.declare_parameter('z_min', -0.15)
+        self.declare_parameter('z_max', 0.325)
+        self.declare_parameter('min_dist_xy', 0.35)
+        self.declare_parameter('max_dist_xy', 4.5)
+        self.declare_parameter('eps', 0.18)
+        self.declare_parameter('min_samples', 25)
+
+        input_topic = self.get_parameter('input_topic').value
+        output_topic = self.get_parameter('output_topic').value
+        self.z_min = float(self.get_parameter('z_min').value)
+        self.z_max = float(self.get_parameter('z_max').value)
+        self.min_dist_xy = float(self.get_parameter('min_dist_xy').value)
+        self.max_dist_xy = float(self.get_parameter('max_dist_xy').value)
+        self.eps = float(self.get_parameter('eps').value)
+        self.min_samples = int(self.get_parameter('min_samples').value)
         
         self.subscription = self.create_subscription(
             PointCloud2,
-            '/livox/lidar',
+            input_topic,
             self.lidar_callback,
             10
         )
         
         self.clust_pub = self.create_publisher(
             PointCloud2,
-            '/livox/lidar/clust',
+            output_topic,
             10
         )
-
-        self.eps = 0.18
-        self.min_samples = 45
-        self.z_min = 0.325
-        self.min_dist_xy = 0.35
-        self.max_dist_xy = 3.8
 
     def lidar_callback(self, msg):
         gen = point_cloud2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True)
@@ -37,7 +49,7 @@ class ClusterNode(Node):
         if points.shape[0] == 0:
             return
 
-        z_mask = points[:, 2] <= self.z_min
+        z_mask = (points[:, 2] >= self.z_min) & (points[:, 2] <= self.z_max)
 
         dist_xy = np.linalg.norm(points[:, :2], axis=1)
         dist_mask = (dist_xy >= self.min_dist_xy) & (dist_xy <= self.max_dist_xy) 
