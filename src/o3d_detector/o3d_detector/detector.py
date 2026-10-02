@@ -5,7 +5,9 @@ from rclpy.node import Node
 from rclpy.duration import Duration
 from sensor_msgs.msg import PointCloud2
 from visualization_msgs.msg import Marker, MarkerArray
+from geometry_msgs.msg import TransformStamped, PoseStamped
 import sensor_msgs_py.point_cloud2 as pc2
+import tf2_ros
 
 
 def fit_circle_kasa(xy: np.ndarray):
@@ -96,10 +98,12 @@ class RobotDetector(Node):
         self.declare_parameter('clust_topic', '/livox/lidar/clust')
         self.declare_parameter('marker_topic', '/detected_robot')
         self.declare_parameter('marker_pose_topic', '/detected_robot_pose')
+        self.declare_parameter('detected_robot_frame', 'opponent_robot')
 
         clust_topic = self.get_parameter('clust_topic').get_parameter_value().string_value
         marker_topic = self.get_parameter('marker_topic').get_parameter_value().string_value
         marker_pose_topic = self.get_parameter('marker_pose_topic').get_parameter_value().string_value
+        self.detected_robot_frame = self.get_parameter('detected_robot_frame').get_parameter_value().string_value
 
         # Robot physical bounds (TurtleBot 2: diameter ~ 0.354m, height ~ 0.35m)
         self.tb2_diameter = 0.354
@@ -120,6 +124,9 @@ class RobotDetector(Node):
 
         self.tracker = RobotTracker()
 
+        # TF2 Broadcaster
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+
         self.lidar_sub = self.create_subscription(
             PointCloud2,
             clust_topic,
@@ -127,13 +134,14 @@ class RobotDetector(Node):
             10
         )
 
-        # Publish to both standard topics so all RViz configs / downstream nodes receive markers
+        # Publishers
         self.marker_pub = self.create_publisher(MarkerArray, marker_topic, 10)
         self.marker_pose_pub = self.create_publisher(MarkerArray, marker_pose_topic, 10)
+        self.pose_pub = self.create_publisher(PoseStamped, '/detection/robot', 10)
 
         self.get_logger().info(
             f"RobotDetector started: subscribing to {clust_topic}, "
-            f"publishing markers to {marker_topic} and {marker_pose_topic}"
+            f"broadcasting TF '{self.detected_robot_frame}'"
         )
 
     def clust_callback(self, msg: PointCloud2):
@@ -168,8 +176,6 @@ class RobotDetector(Node):
             dz = float(p_max[2] - p_min[2])
 
             # Filter 1: Vertical height span & ceiling cutoff
-            # TB2 sits on the floor and stands ~35cm tall.
-            # Ceiling columns and walls reach z < -0.16m. Flat wall scan stripes have dz < 0.22m.
             if p_min[2] < self.ceiling_z_threshold or dz < self.min_height_dz or dz > self.max_height_dz:
                 continue
 
@@ -186,11 +192,9 @@ class RobotDetector(Node):
             l_maj = 2.0 * float(np.sqrt(max(evals[1], 1e-6)))
             l_min = 2.0 * float(np.sqrt(max(evals[0], 1e-6)))
 
-            # Reject flat wall stripes (l_min < 0.08m) and long wall segments (l_maj > 0.44m)
             if l_maj < self.min_wall_length or l_maj > self.max_wall_length or l_min < self.min_depth:
                 continue
 
-            # Aspect ratio check: TB2 is rounded (ratio <= 2.6); walls are elongated planes
             ratio = l_maj / max(l_min, 1e-3)
             if ratio > self.max_aspect_ratio:
                 continue
@@ -200,13 +204,11 @@ class RobotDetector(Node):
             if r is None or r < self.min_radius or r > self.max_radius or rmse > self.max_circle_rmse:
                 continue
 
-            # Direction check: circle center must be behind the visible arc
             d_center = float(np.linalg.norm([xc, yc]))
             d_arc = float(np.linalg.norm(np.mean(xy, axis=0)))
             if d_center < d_arc - 0.04:
                 continue
 
-            # Score candidate based on closeness to TB2 geometric dimensions
             score = abs(r - self.tb2_radius) * 3.0 + rmse * 4.0 + abs(dz - 0.35) * 1.0
             candidates.append({
                 'pos': np.array([xc, yc]),
@@ -219,7 +221,7 @@ class RobotDetector(Node):
         # 4. Multi-frame tracker update
         robot_pos, center_z, is_coasting = self.tracker.update(candidates)
 
-        # 5. Publish detection markers
+        # 5. Publish detection markers and TF
         markers = MarkerArray()
         clear_m = Marker()
         clear_m.header.frame_id = msg.header.frame_id
@@ -230,7 +232,28 @@ class RobotDetector(Node):
         if robot_pos is not None:
             dist = float(np.linalg.norm(robot_pos[:2]))
 
-            # Cylinder Model Marker
+            # --- Публикация PoseStamped ---
+            pose_msg = PoseStamped()
+            pose_msg.header.frame_id = msg.header.frame_id
+            pose_msg.header.stamp = msg.header.stamp
+            pose_msg.pose.position.x = float(robot_pos[0])
+            pose_msg.pose.position.y = float(robot_pos[1])
+            pose_msg.pose.position.z = float(center_z)
+            pose_msg.pose.orientation.w = 1.0
+            self.pose_pub.publish(pose_msg)
+
+            # --- Публикация TF ---
+            t = TransformStamped()
+            t.header.stamp = msg.header.stamp
+            t.header.frame_id = msg.header.frame_id
+            t.child_frame_id = self.detected_robot_frame
+            t.transform.translation.x = float(robot_pos[0])
+            t.transform.translation.y = float(robot_pos[1])
+            t.transform.translation.z = float(center_z)
+            t.transform.rotation.w = 1.0
+            self.tf_broadcaster.sendTransform(t)
+
+            # --- Cylinder Model Marker ---
             m_robot = Marker()
             m_robot.header.frame_id = msg.header.frame_id
             m_robot.header.stamp = msg.header.stamp
@@ -246,7 +269,6 @@ class RobotDetector(Node):
             m_robot.scale.y = self.tb2_diameter
             m_robot.scale.z = 0.35
 
-            # Vibrant Green
             m_robot.color.r = 0.0
             m_robot.color.g = 1.0
             m_robot.color.b = 0.2
@@ -254,7 +276,7 @@ class RobotDetector(Node):
             m_robot.lifetime = Duration(seconds=0.35).to_msg()
             markers.markers.append(m_robot)
 
-            # Text Label Marker
+            # --- Text Label Marker ---
             m_text = Marker()
             m_text.header.frame_id = msg.header.frame_id
             m_text.header.stamp = msg.header.stamp
