@@ -1,76 +1,50 @@
 # tb2-detection-localization
 
-Detection and localization Turtlebot 2 based on Livox lidar point cloud.
+Сабмодуль 3D-детекции и локализации мобильного робота TurtleBot 2 по данным лидара Livox MID-360 для соревнований StarLine 2026.
 
-## Принцип работы
+---
 
-- Лидар видит окружающую среду и объекты вокруг.
-- Узел кластеризации разбивает облако точек на отдельные группы.
-- Затем узел детектора оценивает каждую группу по форме и размеру.
+## 1. Архитектура пайплайна
 
+Система выполняет детекцию робота-соперника в реальном времени через связку двух независимых ROS 2 узлов:
 
-### 1. Соберите контейнер
+1. **`clustering` (`cluster_node`)**:
+   - Вход: 3D PointCloud2 из топика `/livox/lidar`.
+   - Пространственная фильтрация: отсечение пола ($z > +0.325$ м) и потолка ($z < -0.16$ м) с учетом перевернутой ориентации лидара.
+   - Быстрая кластеризация DBSCAN (SciPy/NumPy).
+   - Выход: облако точек `/livox/lidar/clust` с закодированным в поле `intensity` идентификатором кластера.
 
+2. **`o3d_detector` (`detector`)**:
+   - Вход: `/livox/lidar/clust`.
+   - Геометрический анализ: фильтрация плоских стен и крупных препятствий по габаритам и PCA.
+   - Аппроксимация формы цилиндра методом Kasa Circle Fit (радиус базы $R \approx 0.177$ м).
+   - Трекинг положения с фильтрацией ложных выбросов и режимом удержания трека (coasting).
+   - Трансляция трансформаций TF: узел динамически транслирует фрейм соперника `opponent_robot` (`TransformStamped`) в дерево `/tf`.
+   - Выходные данные:
+     - `/detection/robot` (`geometry_msgs/PoseStamped`) — поза обнаруженного соперника в СК лидара/карты.
+     - Дерево TF — фрейм `opponent_robot` относительно фрейма сенсора.
+     - `/detected_robot`, `/detected_robot_pose` (`visualization_msgs/MarkerArray`) — маркеры геометрии и стрелки для RViz2.
+
+Подробная математическая модель и калибровка параметров описаны в [DETECTION_AND_CLUSTERING.md](DETECTION_AND_CLUSTERING.md).
+
+---
+
+## 2. Сборка и запуск
+
+### Сборка
 ```bash
-docker compose build hac
-```
-
-### 2. Разовое разрешение на использование GUI на устройстве 
-Для демонcтрации решения в RVIZ
-
-```
-xhost +local:docker
-```
-
-### 3. Проверьте наличие rosbag
-
-Rosbag'и должны лежать в папке:
-
-```bash
-/root/ws/src/bags
-```
-
-Если нужного файла нет, сначала положите его в эту папку.
-
-## Запуск решения
-1. Запуск docker-контейнера 
-```bash
-docker compose run --rm hac 
-```
-2. Построение пакета
-```bash
-colcon build
+colcon build --packages-select clustering o3d_detector --symlink-install
 source install/setup.bash
 ```
 
-### Базовый запуск
-3. Запускаем launch, содержащий все необходимые ноды
+### Запуск в составе общей системы
+В `full_system.launch.py` и `role.launch.py` детекция запускается автоматически при аргументе `detector:=o3d` (по умолчанию).
+
+### Автономный запуск узлов для отладки
 ```bash
-ros2 launch obstacle_detector detect_from_bag.launch.py
+# Терминал 1: кластеризация
+ros2 run clustering cluster_node
+
+# Терминал 2: детекция, трекинг и TF-broadcaster
+ros2 run o3d_detector detector
 ```
-
-Этот вариант использует дефолтный rosbag, который задан внутри launch-файла.
-
-### Дополнительные аргументы
-
-Launch-файл поддерживает аргументы:
-
-- bag — путь к rosbag-папке;
-- loop — повторять воспроизведение по кругу (`true`/`false`);
-- rate — скорость воспроизведения;
-- rviz — запускать ли RViz (`true`/`false`).
-
-Пример:
-
-```bash
-ros2 launch obstacle_detector detect_from_bag.launch.py bag:=/root/ws/src/bags/rosbag2_2026_06_27-18_43-mov_01 loop:=false rate:=1.0 rviz:=true
-```
-
-
-## Что происходит после запуска
-
-После запуска launch-файла:
-
-- начинает воспроизводиться rosbag;
-- запускаются узлы кластеризации и детекции;
-- публикуются результаты в topic `/detection/robot`, `/detection/robots` и `/detection/markers`.

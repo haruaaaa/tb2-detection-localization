@@ -14,9 +14,9 @@ setup(
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='haruaha',
-    maintainer_email='cesty_cat@mail.ru',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    maintainer_email='haruaha@todo.todo',
+    description='Point cloud clustering node for Livox MID-360 LiDAR',
+    license='Apache-2.0',
     extras_require={
         'test': [
             'pytest',
