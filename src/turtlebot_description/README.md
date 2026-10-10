@@ -1,10 +1,5 @@
-# Testing Model Views
+# turtlebot_description
 
-Test the robot descriptions via the launcher in 
-turtlebot_viz/turtlebot_rviz_launchers.
+Пакет содержит URDF/Xacro описания, сетки (meshes) и визуальные модели мобильного робота TurtleBot 2 на базе Kobuki.
 
-    roslaunch turtlebot_rviz_launchers view_model.launch
-
-It is a standalone launcher with minimal dependencies. Comments
-on how to reconfigure your environment to view the different
-robot models are in the launcher.
+Используется для визуализации модели робота в RViz2 и симуляторе Gazebo в рамках стека детекции и локализации.
