@@ -76,6 +76,9 @@ class ClusterNode(Node):
         points = points[valid_mask]
         if points.shape[0] < self.min_samples:
             return
+       
+        MAX_DIST = 3.0 
+        MAX_EPS_INCREASE = 0.22 
 
         # 3. DBSCAN clustering (fast real-time sklearn implementation)
         clustering = DBSCAN(eps=self.eps, min_samples=self.min_samples).fit(points)
