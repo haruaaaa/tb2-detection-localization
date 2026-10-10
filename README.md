@@ -10,7 +10,7 @@
 
 1. **`clustering` (`cluster_node`)**:
    - Вход: 3D PointCloud2 из топика `/livox/lidar`.
-   - Пространственная фильтрация: отсечение пола ($z > +0.325$ м) и потолка ($z < -0.16$ м) с учетом ориентации лидара.
+   - Пространственная фильтрация: отсечение пола ($z > +0.325$ м) и потолка ($z < -0.16$ м) с учетом перевернутой ориентации лидара.
    - Быстрая кластеризация DBSCAN (SciPy/NumPy).
    - Выход: облако точек `/livox/lidar/clust` с закодированным в поле `intensity` идентификатором кластера.
 
@@ -19,9 +19,11 @@
    - Геометрический анализ: фильтрация плоских стен и крупных препятствий по габаритам и PCA.
    - Аппроксимация формы цилиндра методом Kasa Circle Fit (радиус базы $R \approx 0.177$ м).
    - Трекинг положения с фильтрацией ложных выбросов и режимом удержания трека (coasting).
-   - Выход:
+   - Трансляция трансформаций TF: узел динамически транслирует фрейм соперника `opponent_robot` (`TransformStamped`) в дерево `/tf`.
+   - Выходные данные:
      - `/detection/robot` (`geometry_msgs/PoseStamped`) — поза обнаруженного соперника в СК лидара/карты.
-     - `/detected_robot`, `/detected_robot_pose` (`visualization_msgs/MarkerArray`) — маркеры для RViz2.
+     - Дерево TF — фрейм `opponent_robot` относительно фрейма сенсора.
+     - `/detected_robot`, `/detected_robot_pose` (`visualization_msgs/MarkerArray`) — маркеры геометрии и стрелки для RViz2.
 
 Подробная математическая модель и калибровка параметров описаны в [DETECTION_AND_CLUSTERING.md](DETECTION_AND_CLUSTERING.md).
 
@@ -43,6 +45,6 @@ source install/setup.bash
 # Терминал 1: кластеризация
 ros2 run clustering cluster_node
 
-# Терминал 2: детекция и трекинг
+# Терминал 2: детекция, трекинг и TF-broadcaster
 ros2 run o3d_detector detector
 ```
